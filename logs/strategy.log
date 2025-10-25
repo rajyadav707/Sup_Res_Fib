@@ -32,3 +32,7 @@
 2025-10-25 08:24:56,956 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 200, '0.5': 150.0, '0.618': 138.2, '0.786_sl': 121.39999999999999, '1.0': 100, '1.618_target': 38.2}
 2025-10-25 08:35:50,397 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 100, '0.5': 150.0, '0.618': 161.8, '0.786_sl': 178.60000000000002, '1.0': 200, '1.618_target': 261.8}
 2025-10-25 08:35:50,397 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 200, '0.5': 150.0, '0.618': 138.2, '0.786_sl': 121.39999999999999, '1.0': 100, '1.618_target': 38.2}
+2025-10-25 08:49:38,204 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 100, '0.5': 150.0, '0.618': 161.8, '0.786_sl': 178.60000000000002, '1.0': 200, '1.618_target': 261.8}
+2025-10-25 08:49:38,204 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 200, '0.5': 150.0, '0.618': 138.2, '0.786_sl': 121.39999999999999, '1.0': 100, '1.618_target': 38.2}
+2025-10-25 08:52:09,484 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 100, '0.5': 150.0, '0.618': 161.8, '0.786_sl': 178.60000000000002, '1.0': 200, '1.618_target': 261.8}
+2025-10-25 08:52:09,484 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 200, '0.5': 150.0, '0.618': 138.2, '0.786_sl': 121.39999999999999, '1.0': 100, '1.618_target': 38.2}

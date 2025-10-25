@@ -100,6 +100,50 @@ def construct_option_symbol(symbol, strike, option_type, expiry_str):
     """
     return f"NSE:{symbol}{expiry_str}{option_type}{strike}"
 
+def get_historical_data_smart(fyers, symbol, last_trading_day):
+    """
+    Fetches historical data smartly by updating a local CSV cache.
+    """
+    stock_data_dir = os.path.join(get_project_root(), 'data', 'stock_data')
+    stock_file = os.path.join(stock_data_dir, f"{symbol}.csv")
+
+    df = None
+    range_from = (last_trading_day - datetime.timedelta(days=365)).strftime('%Y-%m-%d')
+    range_to = last_trading_day.strftime('%Y-%m-%d')
+
+    if os.path.exists(stock_file):
+        logger.info(f"Loading cached data for {symbol} from {stock_file}")
+        df = pd.read_csv(stock_file, index_col='date', parse_dates=True)
+        last_cached_date = df.index.max().date()
+
+        # If data is up-to-date, return it
+        if last_cached_date >= last_trading_day:
+            return df
+
+        # Else, fetch only the missing data
+        range_from = (last_cached_date + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+        logger.info(f"Updating data for {symbol} from {range_from}")
+
+    fyers_symbol = f"NSE:{symbol}-EQ"
+    hist_data = fyers.get_historical_data(fyers_symbol, "D", "1", range_from, range_to)
+
+    if hist_data and hist_data.get('candles'):
+        new_df = pd.DataFrame(hist_data['candles'], columns=['epoch', 'open', 'high', 'low', 'close', 'volume'])
+        new_df['date'] = pd.to_datetime(new_df['epoch'], unit='s').dt.date
+        new_df.set_index('date', inplace=True)
+
+        if df is not None: # Append new data to existing data
+            df = pd.concat([df, new_df])
+            df = df[~df.index.duplicated(keep='last')] # Remove any duplicates
+        else:
+            df = new_df
+
+        df.to_csv(stock_file)
+        logger.info(f"Saved/updated data for {symbol} to {stock_file}")
+        return df
+
+    return df # Return existing df even if update fails
+
 def run_scanner():
     """
     Runs the daily market scanner to find potential trade setups.
@@ -122,8 +166,6 @@ def run_scanner():
 
     last_trading_day = get_last_trading_day()
     logger.info(f"Last trading day was: {last_trading_day}")
-    range_from = (last_trading_day - datetime.timedelta(days=365)).strftime('%Y-%m-%d')
-    range_to = last_trading_day.strftime('%Y-%m-%d')
     expiry_str = get_current_month_expiry(last_trading_day)
 
     for i, symbol in enumerate(stock_universe):
@@ -133,15 +175,9 @@ def run_scanner():
         if i % 25 == 0:
             logger.info(f"Scanning progress: {i}/{len(stock_universe)}")
 
-        fyers_symbol = f"NSE:{symbol}-EQ"
+        df = get_historical_data_smart(fyers, symbol, last_trading_day)
 
-        hist_data = fyers.get_historical_data(fyers_symbol, "D", "1", range_from, range_to)
-
-        if hist_data and hist_data.get('candles'):
-            df = pd.DataFrame(hist_data['candles'], columns=['epoch', 'open', 'high', 'low', 'close', 'volume'])
-            df['date'] = pd.to_datetime(df['epoch'], unit='s').dt.date
-            df.set_index('date', inplace=True)
-
+        if df is not None and not df.empty:
             order_block = find_latest_order_block(df)
 
             if order_block:
