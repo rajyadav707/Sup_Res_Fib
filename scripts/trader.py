@@ -1,6 +1,13 @@
 import pandas as pd
 import configparser
 import datetime
+import sys
+import os
+
+# Add the project root to the Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
+
 from scripts.logger import logger
 from scripts.fyers_api import FyersAPI
 

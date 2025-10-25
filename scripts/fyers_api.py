@@ -2,6 +2,11 @@ import configparser
 import os
 import time
 from urllib.parse import urlparse, parse_qs
+import sys
+
+# Add the project root to the Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(project_root)
 
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
