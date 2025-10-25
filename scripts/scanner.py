@@ -16,10 +16,10 @@ from scripts.config_loader import config, get_project_root
 from scripts.fyers_api import FyersAPI
 from scripts.strategy_logic import find_latest_order_block, calculate_fibonacci_levels
 
-def fetch_nse_data(url, cache_filename, max_retries=3, timeout=20):
+def fetch_nse_data(url, cache_filename, is_json=False, max_retries=3, timeout=20):
     cached_path = os.path.join(get_project_root(), 'data', cache_filename)
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Accept": "application/json, text/plain, */*", "Accept-Encoding": "gzip, deflate, br",
         "Accept-Language": "en-US,en;q=0.9", "Referer": "https://www.nseindia.com/option-chain",
         "Connection": "keep-alive",
@@ -37,10 +37,13 @@ def fetch_nse_data(url, cache_filename, max_retries=3, timeout=20):
             response = session.get(url, headers=headers, timeout=timeout)
             response.raise_for_status()
 
+            # Always save raw binary content to avoid encoding errors
             with open(cached_path, 'wb') as f:
                 f.write(response.content)
             logger.info(f"Successfully downloaded and cached data to {cached_path}")
-            return response.content
+
+            # Return the response object for immediate parsing
+            return response
 
         except requests.exceptions.RequestException as e:
             logger.warning(f"Attempt {attempt + 1} failed: {e}")
@@ -48,6 +51,7 @@ def fetch_nse_data(url, cache_filename, max_retries=3, timeout=20):
 
     logger.warning("All download attempts failed. Loading from cache.")
     try:
+        # Return content from cache, which will be handled by calling functions
         with open(cached_path, 'rb') as f:
             return f.read()
     except FileNotFoundError:
@@ -61,9 +65,10 @@ def get_last_trading_day():
 
 def get_nifty50_stocks():
     nifty50_url = config.get('SETTINGS', 'nifty50_url')
-    content = fetch_nse_data(nifty50_url, 'ind_nifty50list.csv')
-    if content:
+    response_or_content = fetch_nse_data(nifty50_url, 'ind_nifty50list.csv')
+    if response_or_content is not None:
         try:
+            content = response_or_content.content if isinstance(response_or_content, requests.Response) else response_or_content
             return pd.read_csv(io.BytesIO(content))['Symbol'].tolist()
         except Exception as e:
             logger.error(f"Failed to parse Nifty50 CSV: {e}")
@@ -75,18 +80,22 @@ def get_fno_stocks_and_lot_sizes():
 
     option_chain_url = config.get('SETTINGS', 'nse_option_chain_url')
     date_str = datetime.date.today().strftime('%Y%m%d')
-    json_content = fetch_nse_data(option_chain_url, f"fno_symbols_{date_str}.json")
+    response_or_content = fetch_nse_data(option_chain_url, f"fno_symbols_{date_str}.json", is_json=True)
 
     fno_symbols = []
-    if json_content:
+    if response_or_content is not None:
         try:
-            data = json.loads(json_content)
+            if isinstance(response_or_content, requests.Response):
+                data = response_or_content.json()
+            else: # It's byte content from cache, decode it
+                data = json.loads(response_or_content.decode('utf-8'))
+
             for record in data.get("records", {}).get("data", []):
                 underlying = record.get("CE", {}).get("underlying") or record.get("PE", {}).get("underlying")
                 if underlying and underlying not in fno_symbols:
                     fno_symbols.append(underlying)
             logger.info(f"Fetched {len(fno_symbols)} unique F&O symbols.")
-        except (json.JSONDecodeError, KeyError) as e:
+        except (json.JSONDecodeError, KeyError, AttributeError) as e:
             logger.error(f"Failed to parse F&O symbols JSON: {e}")
             return []
     else:
@@ -94,11 +103,12 @@ def get_fno_stocks_and_lot_sizes():
         return []
 
     mktlots_url = config.get('SETTINGS', 'nse_mktlots_url')
-    csv_content = fetch_nse_data(mktlots_url, "fo_mktlots.csv")
+    response_or_content_lots = fetch_nse_data(mktlots_url, "fo_mktlots.csv")
 
-    if csv_content:
+    if response_or_content_lots is not None:
         try:
-            df = pd.read_csv(io.BytesIO(csv_content))
+            content = response_or_content_lots.content if isinstance(response_or_content_lots, requests.Response) else response_or_content_lots
+            df = pd.read_csv(io.BytesIO(content))
             df.columns = [c.strip() for c in df.columns]
             lot_sizes_map = pd.Series(df.iloc[:, 1].values, index=df.iloc[:, 0]).to_dict()
             fno_lot_sizes = {sym: lot_sizes_map[sym] for sym in fno_symbols if sym in lot_sizes_map}
@@ -110,6 +120,7 @@ def get_fno_stocks_and_lot_sizes():
     logger.critical("Could not load F&O lot sizes.")
     return []
 
+# ... (Rest of the file remains the same)
 def get_current_month_expiry(today):
     return f"{today.year % 100}{today.strftime('%b').upper()}"
 
