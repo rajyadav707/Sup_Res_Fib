@@ -32,7 +32,7 @@ def get_nifty50_stocks():
     nifty50_url = config.get('SETTINGS', 'nifty50_url')
 
     try:
-        response = requests.get(nifty50_url)
+        response = requests.get(nifty50_url, timeout=10) # 10-second timeout
         response.raise_for_status()
         df = pd.read_csv(io.StringIO(response.text))
         return df['Symbol'].tolist()
@@ -50,7 +50,7 @@ def get_fno_stocks_and_lot_sizes():
     fno_url = config.get('SETTINGS', 'fno_url')
 
     try:
-        response = requests.get(fno_url)
+        response = requests.get(fno_url, timeout=10) # 10-second timeout
         response.raise_for_status()
         df = pd.read_csv(io.StringIO(response.text))
         # Assuming column 0 is the symbol and column 1 is the lot size
