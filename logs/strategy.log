@@ -50,3 +50,16 @@
 2025-10-25 09:40:04,425 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 200, '0.382': 161.8, '0.5': 150.0, '0.618': 138.2, '0.786_sl': 121.39999999999999, '1.0': 100, '1.618_target': -61.80000000000001}
 2025-10-25 09:41:07,449 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 100, '0.382': 138.2, '0.5': 150.0, '0.618': 161.8, '0.786_sl': 178.60000000000002, '1.0': 200, '1.618_target': 361.8}
 2025-10-25 09:41:07,449 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 200, '0.382': 161.8, '0.5': 150.0, '0.618': 138.2, '0.786_sl': 121.39999999999999, '1.0': 100, '1.618_target': -61.80000000000001}
+2025-10-25 13:59:15,542 - trading_strategy - INFO - Attempt 1: Warming up session by visiting https://www.nseindia.com
+2025-10-25 13:59:15,717 - trading_strategy - INFO - Fetching F&O master data from https://www.nseindia.com/api/master-fo
+2025-10-25 13:59:16,943 - trading_strategy - WARNING - Attempt 1 failed with a network error: 404 Client Error: Not Found for url: https://www.nseindia.com/api/master-fo
+2025-10-25 13:59:18,944 - trading_strategy - INFO - Attempt 2: Warming up session by visiting https://www.nseindia.com
+2025-10-25 13:59:18,983 - trading_strategy - INFO - Fetching F&O master data from https://www.nseindia.com/api/master-fo
+2025-10-25 13:59:19,172 - trading_strategy - WARNING - Attempt 2 failed with a network error: 404 Client Error: Not Found for url: https://www.nseindia.com/api/master-fo
+2025-10-25 13:59:21,173 - trading_strategy - INFO - Attempt 3: Warming up session by visiting https://www.nseindia.com
+2025-10-25 13:59:21,272 - trading_strategy - INFO - Fetching F&O master data from https://www.nseindia.com/api/master-fo
+2025-10-25 13:59:21,406 - trading_strategy - WARNING - Attempt 3 failed with a network error: 404 Client Error: Not Found for url: https://www.nseindia.com/api/master-fo
+2025-10-25 13:59:23,407 - trading_strategy - ERROR - All attempts to fetch F&O data from the NSE API failed.
+2025-10-25 13:59:23,409 - trading_strategy - ERROR - Failed to fetch F&O data after all retries.
+2025-10-25 14:12:07,948 - trading_strategy - INFO - Starting daily market scan...
+2025-10-25 14:12:07,948 - trading_strategy - CRITICAL - Access token is missing or a placeholder in config.ini.

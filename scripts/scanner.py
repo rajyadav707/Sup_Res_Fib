@@ -6,7 +6,6 @@ import os
 import datetime
 import time
 import pandas_market_calendars as mcal
-import json
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
@@ -15,6 +14,7 @@ from scripts.logger import logger
 from scripts.config_loader import config, get_project_root
 from scripts.fyers_api import FyersAPI
 from scripts.strategy_logic import find_latest_order_block, calculate_fibonacci_levels
+from scripts.nse_data import fetch_fno_lot_sizes  # Import the new function
 
 def fetch_and_cache_csv(url, cache_filename, max_retries=3, timeout=15):
     """
@@ -47,56 +47,26 @@ def fetch_and_cache_csv(url, cache_filename, max_retries=3, timeout=15):
         logger.error(f"Cache file not found at {cached_path}.")
         return None
 
-def get_fno_stocks_and_lot_sizes_from_file():
-    """Load F&O stocks and lot sizes from the manually saved local JSON file."""
-    # This is hardcoded to the user's manually saved file.
-    file_date = "20251025"
-    file_path = os.path.join(get_project_root(), f"data/fno_symbols_{file_date}.json")
+def get_fno_stocks_and_lot_sizes():
+    """
+    Fetches F&O stocks and their lot sizes using the new nse_data module.
+    """
+    logger.info("Fetching F&O stocks and lot sizes from NSE API...")
+    fno_df = fetch_fno_lot_sizes()
 
-    if not os.path.exists(file_path):
-        logger.critical(f"F&O JSON file not found: {file_path}. Please download it manually.")
+    if fno_df.empty:
+        logger.critical("Failed to fetch F&O data from NSE. Scanner cannot proceed.")
         return [], {}
 
-    try:
-        with open(file_path, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-    except json.JSONDecodeError as e:
-        logger.critical(f"Failed to parse local F&O JSON file: {e}")
-        return [], {}
+    # Drop rows where lot_size is None or 0
+    fno_df.dropna(subset=['lot_size'], inplace=True)
+    fno_df = fno_df[fno_df['lot_size'] > 0]
 
-    local_fno_lot_sizes = {}
-    symbols = []
-    # Handle both master-fo and option-chain structures to be robust
-    data_records = []
-    if "records" in data and "data" in data["records"]:
-        # Handles the structure from option-chain-indices API
-        data_records = data["records"]["data"]
-    elif "data" in data and isinstance(data["data"], list):
-        # Handles the structure from the master-fo API (which the user is using)
-        data_records = data["data"]
-    else:
-        logger.critical("JSON format not recognized: missing 'data' field.")
-        return [], {}
+    symbols = fno_df['symbol'].tolist()
+    lot_sizes = pd.Series(fno_df.lot_size.values, index=fno_df.symbol).to_dict()
 
-    logger.info(f"Detected {len(data_records)} records in JSON file.")
-
-    for item in data_records:
-        # This unified logic handles both possible JSON structures
-        symbol = item.get("symbol")
-        if not symbol: # Fallback for option-chain structure
-             symbol = item.get("CE", {}).get("underlying") or item.get("PE", {}).get("underlying")
-
-        lot_size = item.get("lotSize")
-        if not lot_size and "meta" in item: # Fallback for master-fo structure
-            lot_size = item.get("meta", {}).get("lotSize")
-
-        if symbol and lot_size and symbol not in symbols:
-            symbols.append(symbol)
-            local_fno_lot_sizes[symbol] = lot_size
-
-    logger.info(f"Loaded {len(symbols)} F&O stocks from local file.")
-    return symbols, local_fno_lot_sizes
-
+    logger.info(f"Successfully loaded {len(symbols)} F&O stocks with valid lot sizes.")
+    return symbols, lot_sizes
 
 def get_last_trading_day():
     nse = mcal.get_calendar('NSE')
@@ -152,8 +122,7 @@ def run_scanner():
     logger.info(f"Last identified trading day: {last_trading_day}")
 
     nifty50 = get_nifty50_stocks()
-    # Updated to use the local file reader
-    fno_stocks, fno_lot_sizes = get_fno_stocks_and_lot_sizes_from_file()
+    fno_stocks, fno_lot_sizes = get_fno_stocks_and_lot_sizes()
 
     if not fno_stocks:
         logger.critical("Scanner exiting: F&O stock list is empty.")
