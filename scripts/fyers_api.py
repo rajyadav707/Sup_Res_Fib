@@ -33,7 +33,10 @@ class FyersAPI:
             with open(config_path, 'w') as f:
                 self.config.write(f)
 
-        self.fyers = fyersModel.FyersModel(client_id=self.client_id, is_async=False, token=self.access_token, log_path=os.path.join(get_project_root(), "logs"))
+        log_path = os.path.join(get_project_root(), "logs")
+        os.makedirs(log_path, exist_ok=True) # Ensure the log directory exists
+
+        self.fyers = fyersModel.FyersModel(client_id=self.client_id, is_async=False, token=self.access_token, log_path=log_path)
 
     def generate_access_token(self):
         """
