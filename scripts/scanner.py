@@ -51,7 +51,7 @@ def fetch_nse_data(url, cache_filename, is_json=False, max_retries=3, timeout=15
             with open(cached_path, 'wb') as f:
                 f.write(response.content)
             logger.info(f"Successfully downloaded and cached data to {cached_path}")
-            return response.content
+            return response # Return the full response object
 
         except requests.exceptions.RequestException as e:
             logger.warning(f"Attempt {attempt + 1} failed: {e}")
@@ -62,6 +62,7 @@ def fetch_nse_data(url, cache_filename, is_json=False, max_retries=3, timeout=15
     try:
         with open(cached_path, 'rb') as f:
             logger.info(f"Successfully loaded data from cache: {cached_path}")
+            # For cache, we can't return a response object, so we return content
             return f.read()
     except FileNotFoundError:
         logger.error(f"Cache file not found at {cached_path}. Cannot proceed.")
@@ -96,12 +97,16 @@ def get_fno_stocks_and_lot_sizes():
     option_chain_url = config.get('SETTINGS', 'nse_option_chain_url')
     date_str = datetime.date.today().strftime('%Y%m%d')
     symbols_cache_file = f"fno_symbols_{date_str}.json"
-    json_content = fetch_nse_data(option_chain_url, symbols_cache_file, is_json=True)
+    response_or_content = fetch_nse_data(option_chain_url, symbols_cache_file, is_json=True)
 
     fno_symbols = []
-    if json_content:
+    if response_or_content is not None:
         try:
-            data = json.loads(json_content)
+            if isinstance(response_or_content, requests.Response):
+                data = response_or_content.json()
+            else: # It's byte content from the cache
+                data = json.loads(response_or_content)
+
             # The structure is nested, so we need to safely extract the symbols
             for record in data.get("records", {}).get("data", []):
                 # Underlying symbol can be in either CE or PE, get it from where it exists
