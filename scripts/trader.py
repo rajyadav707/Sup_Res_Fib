@@ -76,9 +76,9 @@ def execute_trades():
         if not trade_info.empty:
             trade = trade_info.iloc[0].to_dict()
 
-            option_symbol = f"NSE:{symbol}25DECFUT"
-            side = -1
-            product_type = "INTRADAY"
+            option_symbol = trade['Option_Symbol']
+            side = -1 # -1 for selling
+            product_type = "INTRADAY" # As per strategy, can be changed to MARGIN for overnight
             order_type = 2
             qty = 1
 

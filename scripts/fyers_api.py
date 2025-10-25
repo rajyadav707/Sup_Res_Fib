@@ -7,12 +7,6 @@ import sys
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
 
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from webdriver_manager.chrome import ChromeDriverManager
 from fyers_apiv3 import fyersModel
 
 from scripts.logger import logger
@@ -27,65 +21,13 @@ class FyersAPI:
         self.access_token = self.config.get('FYERS', 'access_token', fallback=None)
 
         if not self.access_token or self.access_token.strip() == "":
-            self.access_token = self.generate_access_token()
-            self.config.set('FYERS', 'access_token', self.access_token)
-            config_path = os.path.join(get_project_root(), 'config.ini')
-            with open(config_path, 'w') as f:
-                self.config.write(f)
+            logger.critical("Access token is missing from config.ini. Please generate a token and add it to the config file.")
+            sys.exit("Exiting: Access token not found.")
 
         log_path = os.path.join(get_project_root(), "logs")
-        os.makedirs(log_path, exist_ok=True) # Ensure the log directory exists
+        os.makedirs(log_path, exist_ok=True)
 
         self.fyers = fyersModel.FyersModel(client_id=self.client_id, is_async=False, token=self.access_token, log_path=log_path)
-
-    def generate_access_token(self):
-        """
-        Generates an access token using Selenium to automate the login process.
-        """
-        session = fyersModel.SessionModel(
-            client_id=self.client_id,
-            secret_key=self.secret_key,
-            redirect_uri=self.redirect_uri,
-            response_type="code",
-            grant_type="authorization_code"
-        )
-
-        auth_url = session.generate_authcode()
-        logger.info(f"Fyers Auth URL: {auth_url}")
-
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service)
-        driver.get(auth_url)
-
-        try:
-            # Wait for the user to log in and for the redirect URI to be loaded
-            WebDriverWait(driver, 300).until(
-                EC.url_contains(self.redirect_uri)
-            )
-
-            current_url = driver.current_url
-            logger.info(f"Redirected URL: {current_url}")
-
-            parsed_url = urlparse(current_url)
-            query_params = parse_qs(parsed_url.query)
-            auth_code = query_params.get('auth_code', [None])[0]
-
-            if not auth_code:
-                raise Exception("Auth code not found in the redirect URL.")
-
-            session.set_token(auth_code)
-            response = session.generate_token()
-
-            if response.get("s") == "ok":
-                access_token = response["access_token"]
-                logger.info("Access token generated successfully.")
-                return access_token
-            else:
-                logger.error(f"Failed to generate access token: {response}")
-                raise Exception(f"Failed to generate access token: {response}")
-
-        finally:
-            driver.quit()
 
     def get_profile(self):
         """Fetches user profile."""
