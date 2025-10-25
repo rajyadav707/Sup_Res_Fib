@@ -48,10 +48,8 @@ def get_nse_session():
     warm_up_url = 'https://www.nseindia.com/get-quotes/equity?symbol=RELIANCE'
 
     try:
-        # Use dynamic headers for the warm-up call
         headers = get_nse_headers()
         session.get(warm_up_url, headers=headers, timeout=15)
-        # The session now contains the necessary cookies
     except requests.exceptions.RequestException as e:
         logger.error(f"Error during NSE session warm-up: {e}")
         return None
@@ -60,46 +58,47 @@ def get_nse_session():
 
 def fetch_fno_lot_sizes():
     """
-    Fetches the list of F&O stocks and their lot sizes from the NSE website.
+    Fetches the list of F&O stocks and their lot sizes by querying major indices.
     """
     session = get_nse_session()
     if not session:
         return pd.DataFrame()
 
-    url = "https://www.nseindia.com/api/underlying-information"
+    indices = ['NIFTY 50', 'NIFTY NEXT 50', 'NIFTY MIDCAP 100', 'NIFTY BANK']
+    url = "https://www.nseindia.com/api/equity-stockIndices"
+    all_lot_sizes = {}
 
-    try:
-        # Use dynamic headers for the API call
-        headers = get_nse_headers()
-        response = session.get(url, headers=headers, timeout=15)
-        response.raise_for_status()
+    for index in indices:
+        try:
+            params = {'index': index}
+            headers = get_nse_headers()
+            response = session.get(url, params=params, headers=headers, timeout=15)
+            response.raise_for_status()
 
-        data = response.json()
+            data = response.json()
+            stock_data = data.get('data', [])
 
-        stock_data = data.get('data', {}).get('UnderlyingList', [])
+            for item in stock_data:
+                meta = item.get('meta', {})
+                if meta and meta.get('isFNOSec'):
+                    symbol = item.get('symbol')
+                    lot_size = meta.get('lotSize')
+                    if symbol and lot_size:
+                        all_lot_sizes[symbol] = lot_size
 
-        if not stock_data:
-            logger.warning("No F&O stock data found in the API response.")
-            return pd.DataFrame()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error fetching data for index {index}: {e}")
+        except json.JSONDecodeError:
+            logger.error(f"Error decoding JSON for index {index}. Status: {response.status_code}, Response: {response.text}")
+        except Exception as e:
+            logger.error(f"An unexpected error occurred for index {index}: {e}")
 
-        lot_sizes = []
-        for item in stock_data:
-            lot_sizes.append({
-                'symbol': item.get('symbol'),
-                'lot_size': item.get('marketLot')
-            })
+    if not all_lot_sizes:
+        logger.warning("Could not fetch any F&O lot sizes.")
+        return pd.DataFrame()
 
-        lot_sizes_df = pd.DataFrame(lot_sizes)
-        return lot_sizes_df
-
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error fetching F&O data from NSE: {e}")
-    except json.JSONDecodeError:
-        logger.error("Error decoding JSON response from NSE.")
-    except Exception as e:
-        logger.error(f"An unexpected error occurred: {e}")
-
-    return pd.DataFrame()
+    lot_sizes_df = pd.DataFrame(list(all_lot_sizes.items()), columns=['symbol', 'lot_size'])
+    return lot_sizes_df
 
 
 if __name__ == "__main__":

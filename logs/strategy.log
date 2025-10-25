@@ -63,3 +63,30 @@
 2025-10-25 13:59:23,409 - trading_strategy - ERROR - Failed to fetch F&O data after all retries.
 2025-10-25 14:12:07,948 - trading_strategy - INFO - Starting daily market scan...
 2025-10-25 14:12:07,948 - trading_strategy - CRITICAL - Access token is missing or a placeholder in config.ini.
+2025-10-25 14:29:45,591 - trading_strategy - INFO - Starting daily market scan...
+2025-10-25 14:29:45,592 - trading_strategy - CRITICAL - Access token is missing or a placeholder in config.ini.
+2025-10-25 14:43:01,455 - trading_strategy - INFO - Starting daily market scan...
+2025-10-25 14:43:01,491 - trading_strategy - INFO - Last identified trading day: 2025-10-24
+2025-10-25 14:43:01,491 - trading_strategy - INFO - Attempt 1 to download from https://archives.nseindia.com/content/indices/ind_nifty50list.csv
+2025-10-25 14:43:02,994 - trading_strategy - INFO - Successfully downloaded and cached data to /app/data/ind_nifty50list.csv
+2025-10-25 14:43:03,001 - trading_strategy - INFO - Fetching F&O stocks and lot sizes from NSE API...
+2025-10-25 14:43:03,940 - trading_strategy - INFO - Successfully loaded 0 F&O stocks with valid lot sizes.
+2025-10-25 14:43:03,940 - trading_strategy - CRITICAL - Scanner exiting: F&O stock list is empty.
+2025-10-25 14:45:45,151 - trading_strategy - INFO - Starting daily market scan...
+2025-10-25 14:45:45,171 - trading_strategy - INFO - Last identified trading day: 2025-10-24
+2025-10-25 14:45:45,171 - trading_strategy - INFO - Attempt 1 to download from https://archives.nseindia.com/content/indices/ind_nifty50list.csv
+2025-10-25 14:45:46,713 - trading_strategy - INFO - Successfully downloaded and cached data to /app/data/ind_nifty50list.csv
+2025-10-25 14:45:46,718 - trading_strategy - CRITICAL - F&O JSON file not found: /app/data/fno_symbols_20251025.json. Please download it manually.
+2025-10-25 14:45:46,719 - trading_strategy - CRITICAL - Scanner exiting: F&O stock list is empty.
+2025-10-25 14:46:50,756 - trading_strategy - INFO - Starting daily market scan...
+2025-10-25 14:46:50,775 - trading_strategy - INFO - Last identified trading day: 2025-10-24
+2025-10-25 14:46:50,775 - trading_strategy - INFO - Attempt 1 to download from https://archives.nseindia.com/content/indices/ind_nifty50list.csv
+2025-10-25 14:46:51,924 - trading_strategy - INFO - Successfully downloaded and cached data to /app/data/ind_nifty50list.csv
+2025-10-25 14:46:51,929 - trading_strategy - INFO - Loaded 5 F&O stocks from local file.
+2025-10-25 14:46:51,929 - trading_strategy - INFO - Scanning 56 unique stocks.
+2025-10-25 14:46:52,327 - trading_strategy - WARNING - API error fetching history for NSE:360ONE-EQ: Invalid input
+2025-10-25 14:46:53,123 - trading_strategy - WARNING - API error fetching history for NSE:ABB-EQ: Invalid input
+2025-10-25 14:46:53,508 - trading_strategy - WARNING - API error fetching history for NSE:ADANIENSOL-EQ: Invalid input
+2025-10-25 14:46:53,875 - trading_strategy - WARNING - API error fetching history for NSE:APLAPOLLO-EQ: Invalid input
+2025-10-25 14:46:54,239 - trading_strategy - WARNING - API error fetching history for NSE:AUBANK-EQ: Invalid input
+2025-10-25 14:46:54,239 - trading_strategy - INFO - Daily market scan finished.

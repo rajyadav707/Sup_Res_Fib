@@ -6,6 +6,7 @@ import os
 import datetime
 import time
 import pandas_market_calendars as mcal
+import json
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(project_root)
@@ -14,12 +15,8 @@ from scripts.logger import logger
 from scripts.config_loader import config, get_project_root
 from scripts.fyers_api import FyersAPI
 from scripts.strategy_logic import find_latest_order_block, calculate_fibonacci_levels
-from scripts.nse_data import fetch_fno_lot_sizes  # Import the new function
 
 def fetch_and_cache_csv(url, cache_filename, max_retries=3, timeout=15):
-    """
-    A simplified fetcher for the Nifty50 CSV, as it's less problematic.
-    """
     cached_path = os.path.join(get_project_root(), 'data', cache_filename)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -47,25 +44,43 @@ def fetch_and_cache_csv(url, cache_filename, max_retries=3, timeout=15):
         logger.error(f"Cache file not found at {cached_path}.")
         return None
 
-def get_fno_stocks_and_lot_sizes():
+def get_fno_stocks_and_lot_sizes_from_file():
     """
-    Fetches F&O stocks and their lot sizes using the new nse_data module.
+    Load F&O stocks and lot sizes from the manually saved local JSON file.
+    This is a fallback to ensure the scanner can run.
     """
-    logger.info("Fetching F&O stocks and lot sizes from NSE API...")
-    fno_df = fetch_fno_lot_sizes()
+    file_date = "20251025"
+    file_path = os.path.join(get_project_root(), f"data/fno_symbols_{file_date}.json")
 
-    if fno_df.empty:
-        logger.critical("Failed to fetch F&O data from NSE. Scanner cannot proceed.")
+    if not os.path.exists(file_path):
+        logger.critical(f"F&O JSON file not found: {file_path}. Please download it manually.")
         return [], {}
 
-    # Drop rows where lot_size is None or 0
-    fno_df.dropna(subset=['lot_size'], inplace=True)
-    fno_df = fno_df[fno_df['lot_size'] > 0]
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        logger.critical(f"Failed to parse local F&O JSON file: {e}")
+        return [], {}
 
-    symbols = fno_df['symbol'].tolist()
-    lot_sizes = pd.Series(fno_df.lot_size.values, index=fno_df.symbol).to_dict()
+    lot_sizes = {}
+    symbols = []
 
-    logger.info(f"Successfully loaded {len(symbols)} F&O stocks with valid lot sizes.")
+    data_records = data.get("data", [])
+    if not data_records:
+        logger.critical("JSON format not recognized or 'data' field is empty.")
+        return [], {}
+
+    for item in data_records:
+        symbol = item.get("symbol")
+        meta = item.get("meta", {})
+        if symbol and meta:
+            lot_size = meta.get("lotSize")
+            if lot_size:
+                symbols.append(symbol)
+                lot_sizes[symbol] = lot_size
+
+    logger.info(f"Loaded {len(symbols)} F&O stocks from local file.")
     return symbols, lot_sizes
 
 def get_last_trading_day():
@@ -99,7 +114,7 @@ def get_historical_data_smart(fyers, symbol, last_trading_day):
         df = pd.read_csv(stock_file, index_col='date', parse_dates=True)
         if df.index.max().date() >= last_trading_day:
             return df.loc[:range_to]
-        range_from = (df.index.max().date() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+        range_.from_ = (df.index.max().date() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
 
     hist_data = fyers.get_historical_data(f"NSE:{symbol}-EQ", "D", "1", range_from, range_to)
 
@@ -122,7 +137,7 @@ def run_scanner():
     logger.info(f"Last identified trading day: {last_trading_day}")
 
     nifty50 = get_nifty50_stocks()
-    fno_stocks, fno_lot_sizes = get_fno_stocks_and_lot_sizes()
+    fno_stocks, fno_lot_sizes = get_fno_stocks_and_lot_sizes_from_file()
 
     if not fno_stocks:
         logger.critical("Scanner exiting: F&O stock list is empty.")
