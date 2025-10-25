@@ -98,10 +98,10 @@ def execute_trades():
 
             if trade_mode == 'live':
                 logger.info(f"Placing LIVE order for {option_symbol}")
-                pass
+                fyers.place_order(symbol=option_symbol, qty=qty, side=side, order_type='MARKET')
             else:
                 logger.info(f"Placing PAPER order for {option_symbol}")
-                pass
+                # No actual order placement in paper mode
 
             record_trade({
                 "Stock_Symbol": symbol,
@@ -158,7 +158,7 @@ def manage_open_positions():
                     logger.info(f"Stop-loss breached for {symbol}! Closing position.")
 
                     if trade_mode == 'live':
-                        pass
+                        fyers.exit_position(position_id=position['Stock_Symbol'])
 
                     positions_df.loc[index, 'Status'] = 'CLOSED_SL'
                     positions_df.loc[index, 'Exit_Date_Time'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')

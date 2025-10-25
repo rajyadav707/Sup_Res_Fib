@@ -95,9 +95,9 @@ def find_latest_order_block(df, swing_len=5):
                 }
 
     # 4. Return the most recent valid Order Block
-    if latest_bullish_bos_time > latest_bearish_bos_time:
+    if pd.to_datetime(latest_bullish_bos_time) > pd.to_datetime(latest_bearish_bos_time):
         return bullish_ob_details
-    elif latest_bearish_bos_time > latest_bullish_bos_time:
+    elif pd.to_datetime(latest_bearish_bos_time) > pd.to_datetime(latest_bullish_bos_time):
         return bearish_ob_details
 
     return None

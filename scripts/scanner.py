@@ -106,17 +106,24 @@ def construct_option_symbol(symbol, strike, option_type, expiry_str):
 
 def get_historical_data_smart(fyers, symbol, last_trading_day):
     stock_file = os.path.join(get_project_root(), 'data', 'stock_data', f"{symbol}.csv")
-    range_from = (last_trading_day - datetime.timedelta(days=400)).strftime('%Y-%m-%d')
-    range_to = last_trading_day.strftime('%Y-%m-%d')
+    range_from_dt = last_trading_day - datetime.timedelta(days=250)
+    range_to_dt = last_trading_day
     df = None
 
     if os.path.exists(stock_file):
         df = pd.read_csv(stock_file, index_col='date', parse_dates=True)
-        if df.index.max().date() >= last_trading_day:
-            return df.loc[:range_to]
-        range_.from_ = (df.index.max().date() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+        df.index = pd.to_datetime(df.index).date
 
-    hist_data = fyers.get_historical_data(f"NSE:{symbol}-EQ", "D", "1", range_from, range_to)
+        if not df.empty and df.index.max() >= last_trading_day:
+            return df.loc[df.index <= range_to_dt]
+
+        if not df.empty:
+            range_from_dt = df.index.max() + datetime.timedelta(days=1)
+
+    range_from_str = range_from_dt.strftime('%Y-%m-%d')
+    range_to_str = range_to_dt.strftime('%Y-%m-%d')
+
+    hist_data = fyers.get_historical_data(f"NSE:{symbol}-EQ", "D", "1", range_from_str, range_to_str)
 
     if hist_data and hist_data.get('candles'):
         new_df = pd.DataFrame(hist_data['candles'], columns=['epoch', 'open', 'high', 'low', 'close', 'volume'])
@@ -125,10 +132,13 @@ def get_historical_data_smart(fyers, symbol, last_trading_day):
         new_df = new_df.drop(columns=['epoch'])
 
         df = pd.concat([df, new_df]) if df is not None else new_df
+        df.sort_index(inplace=True)
+        df = df[~df.index.duplicated(keep='last')]
         df.to_csv(stock_file)
-        return df.loc[:range_to]
 
-    return df.loc[:range_to] if df is not None else None
+        return df.loc[df.index <= range_to_dt]
+
+    return df.loc[df.index <= range_to_dt] if df is not None else None
 
 def run_scanner():
     logger.info("Starting daily market scan...")

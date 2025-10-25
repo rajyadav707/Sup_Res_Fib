@@ -1,5 +1,0 @@
-{"level":"DEBUG","location":"[get_call:140] fyersModel","message":{"Status Code":422,"API":"/history"},"timestamp":"2025-10-25 14:46:52,325+0000","service":"FyersAPIRequest"}
-{"level":"DEBUG","location":"[get_call:140] fyersModel","message":{"Status Code":422,"API":"/history"},"timestamp":"2025-10-25 14:46:53,121+0000","service":"FyersAPIRequest"}
-{"level":"DEBUG","location":"[get_call:140] fyersModel","message":{"Status Code":422,"API":"/history"},"timestamp":"2025-10-25 14:46:53,507+0000","service":"FyersAPIRequest"}
-{"level":"DEBUG","location":"[get_call:140] fyersModel","message":{"Status Code":422,"API":"/history"},"timestamp":"2025-10-25 14:46:53,873+0000","service":"FyersAPIRequest"}
-{"level":"DEBUG","location":"[get_call:140] fyersModel","message":{"Status Code":422,"API":"/history"},"timestamp":"2025-10-25 14:46:54,237+0000","service":"FyersAPIRequest"}

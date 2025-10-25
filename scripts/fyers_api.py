@@ -57,3 +57,34 @@ class FyersAPI:
         except Exception as e:
             logger.error(f"Error fetching quotes for {symbols}: {e}")
             return None
+
+    def place_order(self, symbol, qty, side, order_type='MARKET', limit_price=0, stop_price=0):
+        data = {
+            "symbol": symbol,
+            "qty": qty,
+            "type": 2 if order_type == 'MARKET' else 1, # 2 for Market, 1 for Limit
+            "side": side, # 1 for Buy, -1 for Sell
+            "productType": "INTRADAY",
+            "limitPrice": limit_price,
+            "stopPrice": stop_price,
+            "validity": "DAY",
+            "disclosedQty": 0,
+            "offlineOrder": "False"
+        }
+        try:
+            response = self.fyers.place_order(data=data)
+            logger.info(f"Order placement response for {symbol}: {response}")
+            return response
+        except Exception as e:
+            logger.error(f"Exception placing order for {symbol}: {e}")
+            return None
+
+    def exit_position(self, position_id):
+        data = {"id": position_id}
+        try:
+            response = self.fyers.exit_positions(data=data)
+            logger.info(f"Exit position response for {position_id}: {response}")
+            return response
+        except Exception as e:
+            logger.error(f"Exception exiting position for {position_id}: {e}")
+            return None
