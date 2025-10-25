@@ -1,0 +1,16 @@
+2025-10-25 06:42:10,887 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 100, '0.5': 150.0, '0.618': 161.8, '0.786_sl': 178.60000000000002, '1.0': 200, '1.618_target': 261.8}
+2025-10-25 06:42:10,887 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 200, '0.5': 150.0, '0.618': 138.2, '0.786_sl': 121.39999999999999, '1.0': 100, '1.618_target': 38.2}
+2025-10-25 06:42:10,888 - trading_strategy - WARNING - Not enough data to find order block. Data length: 11
+2025-10-25 06:42:10,889 - trading_strategy - WARNING - Not enough data to find order block. Data length: 11
+2025-10-25 06:43:04,838 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 100, '0.5': 150.0, '0.618': 161.8, '0.786_sl': 178.60000000000002, '1.0': 200, '1.618_target': 261.8}
+2025-10-25 06:43:04,838 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 200, '0.5': 150.0, '0.618': 138.2, '0.786_sl': 121.39999999999999, '1.0': 100, '1.618_target': 38.2}
+2025-10-25 06:43:04,841 - trading_strategy - INFO - No clear order block structure found.
+2025-10-25 06:43:04,842 - trading_strategy - INFO - No clear order block structure found.
+2025-10-25 06:44:40,112 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 100, '0.5': 150.0, '0.618': 161.8, '0.786_sl': 178.60000000000002, '1.0': 200, '1.618_target': 261.8}
+2025-10-25 06:44:40,112 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 200, '0.5': 150.0, '0.618': 138.2, '0.786_sl': 121.39999999999999, '1.0': 100, '1.618_target': 38.2}
+2025-10-25 06:44:40,114 - trading_strategy - INFO - No clear order block structure found.
+2025-10-25 06:44:40,115 - trading_strategy - INFO - No clear order block structure found.
+2025-10-25 06:46:49,194 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 100, '0.5': 150.0, '0.618': 161.8, '0.786_sl': 178.60000000000002, '1.0': 200, '1.618_target': 261.8}
+2025-10-25 06:46:49,195 - trading_strategy - INFO - Calculated Fibonacci levels for Swing High=200, Swing Low=100: {'0.0': 200, '0.5': 150.0, '0.618': 138.2, '0.786_sl': 121.39999999999999, '1.0': 100, '1.618_target': 38.2}
+2025-10-25 06:46:49,196 - trading_strategy - INFO - No clear order block structure found.
+2025-10-25 06:46:49,198 - trading_strategy - INFO - No clear order block structure found.
