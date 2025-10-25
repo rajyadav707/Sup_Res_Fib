@@ -1,4 +1,3 @@
-import configparser
 import os
 import time
 from urllib.parse import urlparse, parse_qs
@@ -17,23 +16,24 @@ from webdriver_manager.chrome import ChromeDriverManager
 from fyers_apiv3 import fyersModel
 
 from scripts.logger import logger
+from scripts.config_loader import config, get_project_root
 
 class FyersAPI:
-    def __init__(self, config_file='config.ini'):
-        self.config = configparser.ConfigParser()
-        self.config.read(config_file)
+    def __init__(self):
+        self.config = config
         self.client_id = self.config.get('FYERS', 'client_id')
         self.secret_key = self.config.get('FYERS', 'secret_key')
         self.redirect_uri = self.config.get('FYERS', 'redirect_uri')
         self.access_token = self.config.get('FYERS', 'access_token', fallback=None)
 
-        if not self.access_token:
+        if not self.access_token or self.access_token.strip() == "":
             self.access_token = self.generate_access_token()
             self.config.set('FYERS', 'access_token', self.access_token)
-            with open(config_file, 'w') as f:
+            config_path = os.path.join(get_project_root(), 'config.ini')
+            with open(config_path, 'w') as f:
                 self.config.write(f)
 
-        self.fyers = fyersModel.FyersModel(client_id=self.client_id, is_async=False, token=self.access_token, log_path=os.path.join(os.getcwd(), "logs"))
+        self.fyers = fyersModel.FyersModel(client_id=self.client_id, is_async=False, token=self.access_token, log_path=os.path.join(get_project_root(), "logs"))
 
     def generate_access_token(self):
         """
