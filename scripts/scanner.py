@@ -4,6 +4,8 @@ import io
 import sys
 import os
 import datetime
+import time
+import pandas_market_calendars as mcal
 
 # Add the project root to the Python path
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -13,58 +15,81 @@ from scripts.logger import logger
 from scripts.config_loader import config, get_project_root
 from scripts.fyers_api import FyersAPI
 from scripts.strategy_logic import find_latest_order_block, calculate_fibonacci_levels
-import pandas_market_calendars as mcal
+
+
+def fetch_and_cache_data(url, cache_filename, max_retries=3, timeout=10):
+    """
+    Fetches data from a URL with retries and caching.
+    - Tries to download from the URL `max_retries` times.
+    - If successful, saves the content to `cache_filename`.
+    - If all retries fail, it tries to load data from `cache_filename`.
+    """
+    cached_path = os.path.join(get_project_root(), 'data', cache_filename)
+
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Attempt {attempt + 1} to download from {url}")
+            response = requests.get(url, timeout=timeout)
+            response.raise_for_status()
+
+            # If successful, save to cache and return content
+            with open(cached_path, 'w') as f:
+                f.write(response.text)
+            logger.info(f"Successfully downloaded and cached data to {cached_path}")
+            return response.text
+
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Attempt {attempt + 1} failed: {e}")
+            time.sleep(2) # Wait 2 seconds before retrying
+
+    # If all retries fail, try to read from cache
+    logger.warning("All download attempts failed. Trying to load from cache.")
+    try:
+        with open(cached_path, 'r') as f:
+            logger.info(f"Successfully loaded data from cache: {cached_path}")
+            return f.read()
+    except FileNotFoundError:
+        logger.error(f"Cache file not found at {cached_path}. Cannot proceed.")
+        return None
 
 def get_last_trading_day():
     """
     Gets the most recent trading day based on the NSE calendar.
     """
     nse = mcal.get_calendar('NSE')
-    # Get the schedule for the past 2 weeks to be safe
     schedule = nse.schedule(start_date=datetime.date.today() - datetime.timedelta(days=14), end_date=datetime.date.today())
-    # The last valid trading day is the last entry in the schedule
     return schedule.index[-1].date()
 
 def get_nifty50_stocks():
     """
-    Fetches the list of Nifty 50 stocks from the NSE website.
+    Fetches the list of Nifty 50 stocks using the robust fetcher.
     """
     nifty50_url = config.get('SETTINGS', 'nifty50_url')
-
-    try:
-        response = requests.get(nifty50_url, timeout=10) # 10-second timeout
-        response.raise_for_status()
-        df = pd.read_csv(io.StringIO(response.text))
+    file_content = fetch_and_cache_data(nifty50_url, 'ind_nifty50list.csv')
+    if file_content:
+        df = pd.read_csv(io.StringIO(file_content))
         return df['Symbol'].tolist()
-    except Exception as e:
-        logger.error(f"Error fetching Nifty 50 stocks: {e}")
-        return []
+    return []
 
 fno_lot_sizes = {}
-
 def get_fno_stocks_and_lot_sizes():
     """
-    Fetches F&O stocks and their lot sizes from the NSE website.
+    Fetches F&O stocks and lot sizes using the robust fetcher.
     """
     global fno_lot_sizes
     fno_url = config.get('SETTINGS', 'fno_url')
+    file_content = fetch_and_cache_data(fno_url, 'fo_mktlots.csv')
 
-    try:
-        response = requests.get(fno_url, timeout=10) # 10-second timeout
-        response.raise_for_status()
-        df = pd.read_csv(io.StringIO(response.text))
-        # Assuming column 0 is the symbol and column 1 is the lot size
-        df.columns = [c.strip() for c in df.columns] # Clean column names
+    if file_content:
+        df = pd.read_csv(io.StringIO(file_content))
+        df.columns = [c.strip() for c in df.columns]
         fno_lot_sizes = pd.Series(df.iloc[:, 1].values, index=df.iloc[:, 0]).to_dict()
         return df.iloc[:, 0].unique().tolist()
-    except Exception as e:
-        logger.error(f"Error fetching F&O stocks and lot sizes: {e}")
-        return []
+    return []
 
 def get_current_month_expiry(today):
     """
     Determines the current month's expiry date string (e.g., '25DEC').
-    This is a simplified logic and might need adjustment for exact expiry rules.
     """
     month_abbr = today.strftime('%b').upper()
     return f"{today.year % 100}{month_abbr}"
@@ -72,7 +97,6 @@ def get_current_month_expiry(today):
 def construct_option_symbol(symbol, strike, option_type, expiry_str):
     """
     Constructs a Fyers-compatible option symbol.
-    e.g., NSE:SBIN25DECP370
     """
     return f"NSE:{symbol}{expiry_str}{option_type}{strike}"
 
@@ -86,6 +110,11 @@ def run_scanner():
 
     nifty50 = get_nifty50_stocks()
     fno_stocks = get_fno_stocks_and_lot_sizes()
+
+    if not fno_stocks:
+        logger.critical("Could not load F&O stock list. Scanner cannot continue.")
+        return
+
     stock_universe = list(set(nifty50 + fno_stocks))
     logger.info(f"Scanning {len(stock_universe)} unique stocks.")
 
@@ -98,7 +127,7 @@ def run_scanner():
     expiry_str = get_current_month_expiry(last_trading_day)
 
     for i, symbol in enumerate(stock_universe):
-        if symbol not in fno_lot_sizes: # Skip stocks not in F&O
+        if symbol not in fno_lot_sizes:
             continue
 
         if i % 25 == 0:
@@ -133,8 +162,7 @@ def run_scanner():
                             logger.warning(f"Lot size not found for {symbol}. Skipping.")
                             continue
 
-                        # Find nearest strike
-                        step = 50 if "BANKNIFTY" in symbol else (5 if "FINNIFTY" in symbol else 100) # Simplified
+                        step = 50 if "BANKNIFTY" in symbol else (5 if "FINNIFTY" in symbol else 100)
                         nearest_strike = round(target_strike / step) * step
 
                         option_symbol = construct_option_symbol(symbol, nearest_strike, option_type, expiry_str)
@@ -154,7 +182,7 @@ def run_scanner():
                                     "Target_Strike": nearest_strike,
                                     "Est_Premium": premium,
                                     "SL_Level": fib_levels['0.786_sl'],
-                                    "Fib_Levels": str(fib_levels) # Convert dict to string for CSV
+                                    "Fib_Levels": str(fib_levels)
                                 }
                                 potential_trades.append(trade_setup)
                                 logger.info(f"Found profitable trade for {symbol}: {trade_setup}")
