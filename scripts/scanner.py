@@ -66,23 +66,28 @@ def get_fno_stocks_and_lot_sizes_from_file():
 
     local_fno_lot_sizes = {}
     symbols = []
-    # This parsing logic is based on the user's provided structure for the manually saved file.
-    # Note: The structure of the live API might be different. This is for the cached file only.
-    data_records = data.get("records", {}).get("data", [])
-    if not data_records: # Check if the primary key exists
-        logger.critical("JSON file seems to be in an unexpected format. 'records' or 'data' key not found.")
+    # Handle both master-fo and option-chain structures to be robust
+    data_records = []
+    if "records" in data and "data" in data["records"]:
+        # Handles the structure from option-chain-indices API
+        data_records = data["records"]["data"]
+    elif "data" in data and isinstance(data["data"], list):
+        # Handles the structure from the master-fo API (which the user is using)
+        data_records = data["data"]
+    else:
+        logger.critical("JSON format not recognized: missing 'data' field.")
         return [], {}
 
+    logger.info(f"Detected {len(data_records)} records in JSON file.")
+
     for item in data_records:
-        # The live API nests the symbol under 'CE'/'PE', but a manual save might be different.
-        # We will check multiple possible keys for the symbol to be robust.
-        symbol = item.get("symbol") or item.get("underlying")
-        if not symbol:
+        # This unified logic handles both possible JSON structures
+        symbol = item.get("symbol")
+        if not symbol: # Fallback for option-chain structure
              symbol = item.get("CE", {}).get("underlying") or item.get("PE", {}).get("underlying")
 
-        # Lot size might be in 'meta' or at the top level.
         lot_size = item.get("lotSize")
-        if not lot_size and "meta" in item:
+        if not lot_size and "meta" in item: # Fallback for master-fo structure
             lot_size = item.get("meta", {}).get("lotSize")
 
         if symbol and lot_size and symbol not in symbols:
