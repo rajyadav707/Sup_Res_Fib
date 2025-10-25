@@ -49,7 +49,7 @@ def get_fno_stocks():
         return []
 
 from scripts.fyers_api import FyersAPI
-from scripts.strategy_logic import find_internal_order_block, calculate_fibonacci_levels
+from scripts.strategy_logic import find_latest_order_block, calculate_fibonacci_levels
 import datetime
 
 def run_scanner():
@@ -86,7 +86,7 @@ def run_scanner():
             df['date'] = pd.to_datetime(df['epoch'], unit='s').dt.date
             df.set_index('date', inplace=True)
 
-            order_block = find_internal_order_block(df)
+            order_block = find_latest_order_block(df)
 
             if order_block:
                 is_bullish = order_block['type'] == 'bullish'

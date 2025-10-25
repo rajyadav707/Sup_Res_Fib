@@ -1,7 +1,6 @@
 import pandas as pd
 from scripts.logger import logger
 import numpy as np
-from scipy.signal import find_peaks
 
 def calculate_fibonacci_levels(swing_high, swing_low, is_bullish):
     """
@@ -31,71 +30,88 @@ def calculate_fibonacci_levels(swing_high, swing_low, is_bullish):
     logger.info(f"Calculated Fibonacci levels for Swing High={swing_high}, Swing Low={swing_low}: {levels}")
     return levels
 
-def find_swing_points(df, order=5):
-    """
-    Finds swing high and low points in a DataFrame.
-    """
-    high_peaks, _ = find_peaks(df['high'], distance=order)
-    low_peaks, _ = find_peaks(-df['low'], distance=order)
-    return high_peaks, low_peaks
+class OrderBlockDetector:
+    def __init__(self, swing_len=5, atr_period=14, atr_mult=1.5):
+        self.swing_len = swing_len
+        self.atr_period = atr_period
+        self.atr_mult = atr_mult
 
-def find_internal_order_block(df):
+    def _atr(self, df):
+        hl = df['high'] - df['low']
+        hc = abs(df['high'] - df['close'].shift())
+        lc = abs(df['low'] - df['close'].shift())
+        tr = pd.concat([hl, hc, lc], axis=1).max(axis=1)
+        return tr.rolling(self.atr_period).mean()
+
+    def _find_swings(self, df):
+        """Identify swing highs and lows"""
+        df['swing_high'] = df['high'][(df['high'] == df['high'].rolling(self.swing_len, center=True).max())]
+        df['swing_low']  = df['low'][(df['low'] == df['low'].rolling(self.swing_len, center=True).min())]
+        return df
+
+    def detect(self, df):
+        df = df.copy()
+        df.columns = df.columns.str.lower() # Ensure column names are lowercase
+
+        df['atr'] = self._atr(df)
+        df = self._find_swings(df)
+
+        bullish_ob = []
+        bearish_ob = []
+        active_bullish = []
+        active_bearish = []
+
+        for i in range(2, len(df)):
+            row = df.iloc[i]
+
+            # Remove mitigated OBs first
+            active_bullish = [ob for ob in active_bullish if row['low'] > ob['high']]
+            active_bearish = [ob for ob in active_bearish if row['high'] < ob['low']]
+
+            # Bullish Break of Structure
+            if not np.isnan(df['swing_high'].iloc[i-1]) and row['close'] > df['swing_high'].iloc[i-1]:
+                prev_candle = df.iloc[i-1]
+                if prev_candle['close'] < prev_candle['open']:
+                    ob_low = prev_candle['low']
+                    ob_high = prev_candle['high']
+                    active_bullish.append({'low': ob_low, 'high': ob_high, 'created_at': df.index[i-1]})
+
+            # Bearish Break of Structure
+            if not np.isnan(df['swing_low'].iloc[i-1]) and row['close'] < df['swing_low'].iloc[i-1]:
+                prev_candle = df.iloc[i-1]
+                if prev_candle['close'] > prev_candle['open']:
+                    ob_low = prev_candle['low']
+                    ob_high = prev_candle['high']
+                    active_bearish.append({'low': ob_low, 'high': ob_high, 'created_at': df.index[i-1]})
+
+        return active_bullish, active_bearish
+
+def find_latest_order_block(df):
     """
-    Analyzes historical data to find the most recent internal order block based on a break of structure.
+    Wrapper function to instantiate and run the OrderBlockDetector.
+    This provides the latest active order block that can be used by the scanner.
     """
-    if len(df) < 20:
-        logger.warning(f"Not enough data to find order block. Data length: {len(df)}")
+    detector = OrderBlockDetector()
+    active_bullish, active_bearish = detector.detect(df)
+
+    # Return the most recent of either type, if available
+    if not active_bullish and not active_bearish:
         return None
 
-    swing_highs_idx, swing_lows_idx = find_swing_points(df, order=5)
+    latest_bullish_time = pd.to_datetime(active_bullish[-1]['created_at']) if active_bullish else pd.Timestamp(0)
+    latest_bearish_time = pd.to_datetime(active_bearish[-1]['created_at']) if active_bearish else pd.Timestamp(0)
 
-    if len(swing_highs_idx) < 2 or len(swing_lows_idx) < 2:
-        logger.info("Not enough swing points to determine structure.")
-        return None
-
-    # Bullish Scenario: Look for a break of a swing high
-    # We need at least one swing low before the two last swing highs
-    if swing_highs_idx[-1] > swing_lows_idx[-1] and swing_lows_idx[-1] > swing_highs_idx[-2]:
-        prev_high = df['high'].iloc[swing_highs_idx[-2]]
-        last_high = df['high'].iloc[swing_highs_idx[-1]]
-
-        if last_high > prev_high: # Bullish Break of Structure
-            # The impulse move started from the last swing low
-            start_of_move_idx = swing_lows_idx[-1]
-            # Search for the OB in the range between the previous high and the start of the impulse
-            search_range_df = df.iloc[swing_highs_idx[-2]:start_of_move_idx + 1]
-
-            # The order block is the last bearish candle in this range
-            bearish_candles = search_range_df[search_range_df['close'] < search_range_df['open']]
-            if not bearish_candles.empty:
-                ob_candle = bearish_candles.iloc[-1]
-                logger.info(f"Found Bullish OB at index {ob_candle.name}")
-                return {
-                    "type": "bullish", "top": ob_candle['high'], "bottom": ob_candle['low'],
-                    "swing_high": last_high, "swing_low": df['low'].iloc[start_of_move_idx]
-                }
-
-    # Bearish Scenario: Look for a break of a swing low
-    # We need at least one swing high before the two last swing lows
-    if swing_lows_idx[-1] > swing_highs_idx[-1] and swing_highs_idx[-1] > swing_lows_idx[-2]:
-        prev_low = df['low'].iloc[swing_lows_idx[-2]]
-        last_low = df['low'].iloc[swing_lows_idx[-1]]
-
-        if last_low < prev_low: # Bearish Break of Structure
-            # The impulse move started from the last swing high
-            start_of_move_idx = swing_highs_idx[-1]
-            # Search for the OB in the range between the previous low and the start of the impulse
-            search_range_df = df.iloc[swing_lows_idx[-2]:start_of_move_idx + 1]
-
-            # The order block is the last bullish candle in this range
-            bullish_candles = search_range_df[search_range_df['close'] > search_range_df['open']]
-            if not bullish_candles.empty:
-                ob_candle = bullish_candles.iloc[-1]
-                logger.info(f"Found Bearish OB at index {ob_candle.name}")
-                return {
-                    "type": "bearish", "top": ob_candle['high'], "bottom": ob_candle['low'],
-                    "swing_high": df['high'].iloc[start_of_move_idx], "swing_low": last_low
-                }
-
-    logger.info("No clear order block structure found.")
-    return None
+    if latest_bullish_time > latest_bearish_time:
+        latest_ob = active_bullish[-1]
+        swing_high_after_ob = df[df.index > latest_ob['created_at']]['high'].max()
+        return {
+            "type": "bullish", "top": latest_ob['high'], "bottom": latest_ob['low'],
+            "swing_high": swing_high_after_ob, "swing_low": latest_ob['low']
+        }
+    else:
+        latest_ob = active_bearish[-1]
+        swing_low_after_ob = df[df.index > latest_ob['created_at']]['low'].min()
+        return {
+            "type": "bearish", "top": latest_ob['high'], "bottom": latest_ob['low'],
+            "swing_high": latest_ob['high'], "swing_low": swing_low_after_ob
+        }
