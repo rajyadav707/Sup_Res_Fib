@@ -16,48 +16,82 @@ from scripts.config_loader import config, get_project_root
 from scripts.fyers_api import FyersAPI
 from scripts.strategy_logic import find_latest_order_block, calculate_fibonacci_levels
 
-def fetch_nse_data(url, cache_filename, is_json=False, max_retries=3, timeout=20):
+def fetch_and_cache_csv(url, cache_filename, max_retries=3, timeout=15):
+    """
+    A simplified fetcher for the Nifty50 CSV, as it's less problematic.
+    """
     cached_path = os.path.join(get_project_root(), 'data', cache_filename)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Encoding": "gzip, deflate, br",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.nseindia.com/option-chain",
-        "Connection": "keep-alive",
     }
-
-    session = requests.Session()
 
     for attempt in range(max_retries):
         try:
-            logger.info(f"Attempt {attempt + 1}: Initializing session with NSE...")
-            session.get("https://www.nseindia.com", headers=headers, timeout=timeout)
-            time.sleep(1.5)
-
-            logger.info(f"Attempt {attempt + 1}: Fetching data from {url}")
-            response = session.get(url, headers=headers, timeout=timeout)
+            logger.info(f"Attempt {attempt + 1} to download from {url}")
+            response = requests.get(url, headers=headers, timeout=timeout)
             response.raise_for_status()
 
-            # Save raw binary content
             with open(cached_path, 'wb') as f:
                 f.write(response.content)
             logger.info(f"Successfully downloaded and cached data to {cached_path}")
-
-            # Return the response for immediate use
-            return response
-
+            return response.content
         except requests.exceptions.RequestException as e:
             logger.warning(f"Attempt {attempt + 1} failed: {e}")
-            time.sleep(3)
+            time.sleep(2)
 
-    logger.warning("All download attempts failed. Loading from cache.")
+    logger.warning("All download attempts failed. Trying to load from cache.")
     try:
         with open(cached_path, 'rb') as f:
             return f.read()
     except FileNotFoundError:
         logger.error(f"Cache file not found at {cached_path}.")
         return None
+
+def get_fno_stocks_and_lot_sizes_from_file():
+    """Load F&O stocks and lot sizes from the manually saved local JSON file."""
+    # This is hardcoded to the user's manually saved file.
+    file_date = "20251025"
+    file_path = os.path.join(get_project_root(), f"data/fno_symbols_{file_date}.json")
+
+    if not os.path.exists(file_path):
+        logger.critical(f"F&O JSON file not found: {file_path}. Please download it manually.")
+        return [], {}
+
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        logger.critical(f"Failed to parse local F&O JSON file: {e}")
+        return [], {}
+
+    local_fno_lot_sizes = {}
+    symbols = []
+    # This parsing logic is based on the user's provided structure for the manually saved file.
+    # Note: The structure of the live API might be different. This is for the cached file only.
+    data_records = data.get("records", {}).get("data", [])
+    if not data_records: # Check if the primary key exists
+        logger.critical("JSON file seems to be in an unexpected format. 'records' or 'data' key not found.")
+        return [], {}
+
+    for item in data_records:
+        # The live API nests the symbol under 'CE'/'PE', but a manual save might be different.
+        # We will check multiple possible keys for the symbol to be robust.
+        symbol = item.get("symbol") or item.get("underlying")
+        if not symbol:
+             symbol = item.get("CE", {}).get("underlying") or item.get("PE", {}).get("underlying")
+
+        # Lot size might be in 'meta' or at the top level.
+        lot_size = item.get("lotSize")
+        if not lot_size and "meta" in item:
+            lot_size = item.get("meta", {}).get("lotSize")
+
+        if symbol and lot_size and symbol not in symbols:
+            symbols.append(symbol)
+            local_fno_lot_sizes[symbol] = lot_size
+
+    logger.info(f"Loaded {len(symbols)} F&O stocks from local file.")
+    return symbols, local_fno_lot_sizes
+
 
 def get_last_trading_day():
     nse = mcal.get_calendar('NSE')
@@ -66,62 +100,14 @@ def get_last_trading_day():
 
 def get_nifty50_stocks():
     nifty50_url = config.get('SETTINGS', 'nifty50_url')
-    response_or_content = fetch_nse_data(nifty50_url, 'ind_nifty50list.csv')
-    if response_or_content is not None:
+    content = fetch_and_cache_csv(nifty50_url, 'ind_nifty50list.csv')
+    if content:
         try:
-            content = response_or_content.content if isinstance(response_or_content, requests.Response) else response_or_content
             return pd.read_csv(io.BytesIO(content))['Symbol'].tolist()
         except Exception as e:
             logger.error(f"Failed to parse Nifty50 CSV: {e}")
     return []
 
-fno_lot_sizes = {}
-def get_fno_stocks_and_lot_sizes():
-    global fno_lot_sizes
-
-    option_chain_url = config.get('SETTINGS', 'nse_option_chain_url')
-    date_str = datetime.date.today().strftime('%Y%m%d')
-    response_or_content = fetch_nse_data(option_chain_url, f"fno_symbols_{date_str}.json", is_json=True)
-
-    fno_symbols = []
-    if response_or_content is not None:
-        try:
-            if isinstance(response_or_content, requests.Response):
-                data = response_or_content.json() # Let requests handle decoding
-            else: # It's byte content from cache, decode it
-                data = json.loads(response_or_content.decode('utf-8'))
-
-            for record in data.get("records", {}).get("data", []):
-                underlying = record.get("CE", {}).get("underlying") or record.get("PE", {}).get("underlying")
-                if underlying and underlying not in fno_symbols:
-                    fno_symbols.append(underlying)
-            logger.info(f"Fetched {len(fno_symbols)} unique F&O symbols.")
-        except (json.JSONDecodeError, KeyError, AttributeError) as e:
-            logger.error(f"Failed to parse F&O symbols JSON: {e}")
-            return []
-    else:
-        logger.critical("Failed to fetch F&O symbols list.")
-        return []
-
-    mktlots_url = config.get('SETTINGS', 'nse_mktlots_url')
-    response_or_content_lots = fetch_nse_data(mktlots_url, "fo_mktlots.csv")
-
-    if response_or_content_lots is not None:
-        try:
-            content = response_or_content_lots.content if isinstance(response_or_content_lots, requests.Response) else response_or_content_lots
-            df = pd.read_csv(io.BytesIO(content))
-            df.columns = [c.strip() for c in df.columns]
-            lot_sizes_map = pd.Series(df.iloc[:, 1].values, index=df.iloc[:, 0]).to_dict()
-            fno_lot_sizes = {sym: lot_sizes_map[sym] for sym in fno_symbols if sym in lot_sizes_map}
-            logger.info(f"Mapped lot sizes for {len(fno_lot_sizes)} F&O symbols.")
-            return list(fno_lot_sizes.keys())
-        except Exception as e:
-            logger.error(f"Failed to parse F&O market lots CSV: {e}")
-
-    logger.critical("Could not load F&O lot sizes.")
-    return []
-
-# ... (Rest of the file remains the same)
 def get_current_month_expiry(today):
     return f"{today.year % 100}{today.strftime('%b').upper()}"
 
@@ -161,7 +147,8 @@ def run_scanner():
     logger.info(f"Last identified trading day: {last_trading_day}")
 
     nifty50 = get_nifty50_stocks()
-    fno_stocks = get_fno_stocks_and_lot_sizes()
+    # Updated to use the local file reader
+    fno_stocks, fno_lot_sizes = get_fno_stocks_and_lot_sizes_from_file()
 
     if not fno_stocks:
         logger.critical("Scanner exiting: F&O stock list is empty.")
