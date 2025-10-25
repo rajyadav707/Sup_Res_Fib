@@ -17,33 +17,37 @@ from scripts.config_loader import config, get_project_root
 from scripts.fyers_api import FyersAPI
 from scripts.strategy_logic import find_latest_order_block, calculate_fibonacci_levels
 
-
 def fetch_nse_data(url, cache_filename, is_json=False, max_retries=3, timeout=15):
     """
-    Fetches data from NSE URLs with retries, caching, and a proper session.
+    Fetches data from NSE URLs with retries, caching, and a proper session
+    that handles Cloudflare's bot protection.
     """
     cached_path = os.path.join(get_project_root(), 'data', cache_filename)
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
-        'Referer': 'https://www.nseindia.com/',
-        'Accept': 'application/json, text/plain, */*',
-        'Connection': 'keep-alive',
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.nseindia.com/option-chain",
+        "Connection": "keep-alive",
     }
 
     session = requests.Session()
 
     for attempt in range(max_retries):
         try:
-            logger.info(f"Attempt {attempt + 1}: Initializing session with NSE.")
-            session.get("https://www.nseindia.com", headers=headers, timeout=timeout)
-            time.sleep(1) # Small delay to mimic human browsing
+            # Step 1: Warm up session to get Cloudflare cookies
+            logger.info(f"Attempt {attempt + 1}: Initializing session with NSE...")
+            home_url = "https://www.nseindia.com"
+            session.get(home_url, headers=headers, timeout=timeout)
+            time.sleep(1.5)  # Wait before actual API call
 
-            logger.info(f"Attempt {attempt + 1} to download from {url}")
-            response = session.get(url, timeout=timeout, headers=headers)
+            # Step 2: Call the actual API/URL
+            logger.info(f"Attempt {attempt + 1}: Fetching data from {url}")
+            response = session.get(url, headers=headers, timeout=timeout)
             response.raise_for_status()
 
+            # Save and return content
             with open(cached_path, 'wb') as f:
                 f.write(response.content)
             logger.info(f"Successfully downloaded and cached data to {cached_path}")
@@ -51,8 +55,9 @@ def fetch_nse_data(url, cache_filename, is_json=False, max_retries=3, timeout=15
 
         except requests.exceptions.RequestException as e:
             logger.warning(f"Attempt {attempt + 1} failed: {e}")
-            time.sleep(2)
+            time.sleep(3) # Wait a bit longer before retrying
 
+    # Fallback to cache if all retries fail
     logger.warning("All download attempts failed. Trying to load from cache.")
     try:
         with open(cached_path, 'rb') as f:
@@ -71,7 +76,6 @@ def get_last_trading_day():
 def get_nifty50_stocks():
     """Fetches the list of Nifty 50 stocks."""
     nifty50_url = config.get('SETTINGS', 'nifty50_url')
-    # Use the same robust fetcher for consistency
     file_content = fetch_nse_data(nifty50_url, 'ind_nifty50list.csv')
     if file_content:
         try:
@@ -88,7 +92,7 @@ def get_fno_stocks_and_lot_sizes():
     """
     global fno_lot_sizes
 
-    # 1. Fetch live F&O symbols
+    # 1. Fetch live F&O symbols from a working API endpoint
     option_chain_url = config.get('SETTINGS', 'nse_option_chain_url')
     date_str = datetime.date.today().strftime('%Y%m%d')
     symbols_cache_file = f"fno_symbols_{date_str}.json"
@@ -98,19 +102,21 @@ def get_fno_stocks_and_lot_sizes():
     if json_content:
         try:
             data = json.loads(json_content)
+            # The structure is nested, so we need to safely extract the symbols
             for record in data.get("records", {}).get("data", []):
-                symbol = record.get("CE", {}).get("underlying")
-                if symbol and symbol not in fno_symbols:
-                    fno_symbols.append(symbol)
+                # Underlying symbol can be in either CE or PE, get it from where it exists
+                underlying = record.get("CE", {}).get("underlying") or record.get("PE", {}).get("underlying")
+                if underlying and underlying not in fno_symbols:
+                    fno_symbols.append(underlying)
             logger.info(f"Successfully fetched {len(fno_symbols)} unique F&O symbols.")
         except (json.JSONDecodeError, KeyError) as e:
             logger.error(f"Failed to parse F&O symbols JSON: {e}")
-            return [] # Cannot proceed without symbols
+            return []
     else:
-        logger.critical("Failed to fetch F&O symbols list.")
+        logger.critical("Failed to fetch F&O symbols list, cannot proceed.")
         return []
 
-    # 2. Fetch lot sizes
+    # 2. Fetch lot sizes from the (more stable) market lots CSV
     mktlots_url = config.get('SETTINGS', 'nse_mktlots_url')
     lots_cache_file = "fo_mktlots.csv"
     csv_content = fetch_nse_data(mktlots_url, lots_cache_file)
@@ -119,19 +125,19 @@ def get_fno_stocks_and_lot_sizes():
         try:
             df = pd.read_csv(io.BytesIO(csv_content))
             df.columns = [c.strip() for c in df.columns]
-            # Create a dictionary of symbol to lot size
             lot_sizes_map = pd.Series(df.iloc[:, 1].values, index=df.iloc[:, 0]).to_dict()
 
-            # 3. Merge: Filter lot sizes for the symbols we know are active
+            # 3. Merge: Ensure all fetched symbols have a lot size
             fno_lot_sizes = {sym: lot_sizes_map[sym] for sym in fno_symbols if sym in lot_sizes_map}
             logger.info(f"Successfully mapped lot sizes for {len(fno_lot_sizes)} F&O symbols.")
             return list(fno_lot_sizes.keys())
         except Exception as e:
             logger.error(f"Failed to parse F&O market lots CSV: {e}")
 
-    logger.critical("Could not load F&O lot sizes.")
-    return []
+    logger.critical("Could not load F&O lot sizes. Scanner will be incomplete.")
+    return [] # Return empty if lots file fails, as we can't calculate premium
 
+# ... (rest of the file remains the same)
 def get_current_month_expiry(today):
     month_abbr = today.strftime('%b').upper()
     return f"{today.year % 100}{month_abbr}"
