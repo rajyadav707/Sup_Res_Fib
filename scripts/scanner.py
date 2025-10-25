@@ -19,17 +19,20 @@ from scripts.strategy_logic import find_latest_order_block, calculate_fibonacci_
 
 def fetch_and_cache_data(url, cache_filename, max_retries=3, timeout=15):
     """
-    Fetches data from a URL with retries and caching.
+    Fetches data from a URL with retries and caching, using a browser-like User-Agent.
     - Tries to download from the URL `max_retries` times.
     - If successful, saves the content to `cache_filename`.
     - If all retries fail, it tries to load data from `cache_filename`.
     """
     cached_path = os.path.join(get_project_root(), 'data', cache_filename)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
 
     for attempt in range(max_retries):
         try:
             logger.info(f"Attempt {attempt + 1} to download from {url}")
-            response = requests.get(url, timeout=timeout)
+            response = requests.get(url, timeout=timeout, headers=headers)
             response.raise_for_status()
 
             with open(cached_path, 'wb') as f: # Write in binary mode
