@@ -20,8 +20,10 @@ def fetch_nse_data(url, cache_filename, is_json=False, max_retries=3, timeout=20
     cached_path = os.path.join(get_project_root(), 'data', cache_filename)
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*", "Accept-Encoding": "gzip, deflate, br",
-        "Accept-Language": "en-US,en;q=0.9", "Referer": "https://www.nseindia.com/option-chain",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.nseindia.com/option-chain",
         "Connection": "keep-alive",
     }
 
@@ -37,12 +39,12 @@ def fetch_nse_data(url, cache_filename, is_json=False, max_retries=3, timeout=20
             response = session.get(url, headers=headers, timeout=timeout)
             response.raise_for_status()
 
-            # Always save raw binary content to avoid encoding errors
+            # Save raw binary content
             with open(cached_path, 'wb') as f:
                 f.write(response.content)
             logger.info(f"Successfully downloaded and cached data to {cached_path}")
 
-            # Return the response object for immediate parsing
+            # Return the response for immediate use
             return response
 
         except requests.exceptions.RequestException as e:
@@ -51,7 +53,6 @@ def fetch_nse_data(url, cache_filename, is_json=False, max_retries=3, timeout=20
 
     logger.warning("All download attempts failed. Loading from cache.")
     try:
-        # Return content from cache, which will be handled by calling functions
         with open(cached_path, 'rb') as f:
             return f.read()
     except FileNotFoundError:
@@ -86,7 +87,7 @@ def get_fno_stocks_and_lot_sizes():
     if response_or_content is not None:
         try:
             if isinstance(response_or_content, requests.Response):
-                data = response_or_content.json()
+                data = response_or_content.json() # Let requests handle decoding
             else: # It's byte content from cache, decode it
                 data = json.loads(response_or_content.decode('utf-8'))
 
