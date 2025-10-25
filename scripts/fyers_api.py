@@ -16,7 +16,6 @@ class FyersAPI:
     def __init__(self):
         self.config = config
         self.client_id = self.config.get('FYERS', 'client_id')
-        self.redirect_uri = self.config.get('FYERS', 'redirect_uri')
         self.access_token = self.config.get('FYERS', 'access_token', fallback=None)
 
         if not self.access_token or self.access_token.strip() == "":
