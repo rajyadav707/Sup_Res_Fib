@@ -18,29 +18,32 @@ from scripts.fyers_api import FyersAPI
 from scripts.strategy_logic import find_latest_order_block, calculate_fibonacci_levels
 
 
-def fetch_and_cache_data(url, cache_filename, is_json=False, max_retries=3, timeout=15):
+def fetch_nse_data(url, cache_filename, is_json=False, max_retries=3, timeout=15):
     """
-    Fetches data from a URL with retries, caching, and a proper User-Agent.
-    Handles both JSON APIs and plain text/CSV files.
+    Fetches data from NSE URLs with retries, caching, and a proper session.
     """
     cached_path = os.path.join(get_project_root(), 'data', cache_filename)
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-GB,en-US;q=0.9,en;q=0.8',
+        'Referer': 'https://www.nseindia.com/',
         'Accept': 'application/json, text/plain, */*',
-        'Referer': 'https://www.nseindia.com/'
+        'Connection': 'keep-alive',
     }
 
-    # Use a session to handle cookies, important for NSE website
     session = requests.Session()
-    session.get("https://www.nseindia.com", headers=headers, timeout=timeout) # Initial visit to get cookies
 
     for attempt in range(max_retries):
         try:
+            logger.info(f"Attempt {attempt + 1}: Initializing session with NSE.")
+            session.get("https://www.nseindia.com", headers=headers, timeout=timeout)
+            time.sleep(1) # Small delay to mimic human browsing
+
             logger.info(f"Attempt {attempt + 1} to download from {url}")
             response = session.get(url, timeout=timeout, headers=headers)
             response.raise_for_status()
 
-            # Save the raw content (binary for JSON/CSV)
             with open(cached_path, 'wb') as f:
                 f.write(response.content)
             logger.info(f"Successfully downloaded and cached data to {cached_path}")
@@ -50,7 +53,6 @@ def fetch_and_cache_data(url, cache_filename, is_json=False, max_retries=3, time
             logger.warning(f"Attempt {attempt + 1} failed: {e}")
             time.sleep(2)
 
-    # If all retries fail, try to read from cache
     logger.warning("All download attempts failed. Trying to load from cache.")
     try:
         with open(cached_path, 'rb') as f:
@@ -69,7 +71,8 @@ def get_last_trading_day():
 def get_nifty50_stocks():
     """Fetches the list of Nifty 50 stocks."""
     nifty50_url = config.get('SETTINGS', 'nifty50_url')
-    file_content = fetch_and_cache_data(nifty50_url, 'ind_nifty50list.csv')
+    # Use the same robust fetcher for consistency
+    file_content = fetch_nse_data(nifty50_url, 'ind_nifty50list.csv')
     if file_content:
         try:
             df = pd.read_csv(io.BytesIO(file_content))
@@ -81,52 +84,62 @@ def get_nifty50_stocks():
 fno_lot_sizes = {}
 def get_fno_stocks_and_lot_sizes():
     """
-    Fetches F&O stocks and lot sizes from the live NSE master API.
+    Fetches F&O symbols from the live option chain and lot sizes from the market lots file.
     """
     global fno_lot_sizes
-    fno_url = config.get('SETTINGS', 'fno_master_url')
 
-    # Use today's date for the cache filename to ensure it's fresh daily
+    # 1. Fetch live F&O symbols
+    option_chain_url = config.get('SETTINGS', 'nse_option_chain_url')
     date_str = datetime.date.today().strftime('%Y%m%d')
-    cache_filename = f"fno_master_{date_str}.json"
+    symbols_cache_file = f"fno_symbols_{date_str}.json"
+    json_content = fetch_nse_data(option_chain_url, symbols_cache_file, is_json=True)
 
-    json_content = fetch_and_cache_data(fno_url, cache_filename, is_json=True)
-
+    fno_symbols = []
     if json_content:
         try:
             data = json.loads(json_content)
-            df = pd.DataFrame(data['data'])
+            for record in data.get("records", {}).get("data", []):
+                symbol = record.get("CE", {}).get("underlying")
+                if symbol and symbol not in fno_symbols:
+                    fno_symbols.append(symbol)
+            logger.info(f"Successfully fetched {len(fno_symbols)} unique F&O symbols.")
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.error(f"Failed to parse F&O symbols JSON: {e}")
+            return [] # Cannot proceed without symbols
+    else:
+        logger.critical("Failed to fetch F&O symbols list.")
+        return []
 
-            # We are interested in stock derivatives, not indices
-            stock_fo = df[df['assetType'] == 'stock']
+    # 2. Fetch lot sizes
+    mktlots_url = config.get('SETTINGS', 'nse_mktlots_url')
+    lots_cache_file = "fo_mktlots.csv"
+    csv_content = fetch_nse_data(mktlots_url, lots_cache_file)
 
-            # Extract unique symbols and their lot sizes
-            # The 'lotSize' is under the 'meta' dictionary
-            df_lots = stock_fo[['symbol', 'meta']].copy()
-            df_lots['lotSize'] = df_lots['meta'].apply(lambda x: x.get('lotSize', 0))
+    if csv_content:
+        try:
+            df = pd.read_csv(io.BytesIO(csv_content))
+            df.columns = [c.strip() for c in df.columns]
+            # Create a dictionary of symbol to lot size
+            lot_sizes_map = pd.Series(df.iloc[:, 1].values, index=df.iloc[:, 0]).to_dict()
 
-            # Create the dictionary for lookup
-            fno_lot_sizes = pd.Series(df_lots.lotSize.values, index=df_lots.symbol).to_dict()
-
-            logger.info(f"Successfully parsed {len(fno_lot_sizes)} F&O symbols and lot sizes.")
+            # 3. Merge: Filter lot sizes for the symbols we know are active
+            fno_lot_sizes = {sym: lot_sizes_map[sym] for sym in fno_symbols if sym in lot_sizes_map}
+            logger.info(f"Successfully mapped lot sizes for {len(fno_lot_sizes)} F&O symbols.")
             return list(fno_lot_sizes.keys())
-        except (json.JSONDecodeError, KeyError, Exception) as e:
-            logger.error(f"Failed to parse F&O master JSON: {e}")
+        except Exception as e:
+            logger.error(f"Failed to parse F&O market lots CSV: {e}")
 
-    logger.critical("Could not load F&O stock list.")
+    logger.critical("Could not load F&O lot sizes.")
     return []
 
 def get_current_month_expiry(today):
-    """Determines the current month's expiry date string (e.g., '25DEC')."""
     month_abbr = today.strftime('%b').upper()
     return f"{today.year % 100}{month_abbr}"
 
 def construct_option_symbol(symbol, strike, option_type, expiry_str):
-    """Constructs a Fyers-compatible option symbol."""
     return f"NSE:{symbol}{expiry_str}{strike}{option_type}"
 
 def get_historical_data_smart(fyers, symbol, last_trading_day):
-    """Fetches historical data smartly by updating a local CSV cache."""
     stock_data_dir = os.path.join(get_project_root(), 'data', 'stock_data')
     stock_file = os.path.join(stock_data_dir, f"{symbol}.csv")
 
@@ -136,10 +149,9 @@ def get_historical_data_smart(fyers, symbol, last_trading_day):
 
     if os.path.exists(stock_file):
         df = pd.read_csv(stock_file, index_col='date', parse_dates=True)
-        last_cached_date = df.index.max().date()
-        if last_cached_date >= last_trading_day:
+        if df.index.max().date() >= last_trading_day:
             return df.loc[:range_to]
-        range_from = (last_cached_date + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
+        range_from = (df.index.max().date() + datetime.timedelta(days=1)).strftime('%Y-%m-%d')
 
     fyers_symbol = f"NSE:{symbol}-EQ"
     hist_data = fyers.get_historical_data(fyers_symbol, "D", "1", range_from, range_to)
@@ -178,7 +190,7 @@ def run_scanner():
 
     for i, symbol in enumerate(stock_universe):
         if symbol not in fno_lot_sizes: continue
-        if (i + 1) % 25 == 0: logger.info(f"Scanning progress: {i+1}/{len(stock_universe)}")
+        if (i + 1) % 5 == 0: logger.info(f"Scanning progress: {i+1}/{len(stock_universe)}")
 
         df = get_historical_data_smart(fyers, symbol, last_trading_day)
 
@@ -228,18 +240,15 @@ def run_scanner():
                     else:
                         logger.debug(f"Trade for {symbol} ({option_symbol}) below premium req. Premium: {premium}")
 
-    # Save results
     if potential_trades_zone1:
         pd.DataFrame(potential_trades_zone1).to_csv(os.path.join(get_project_root(), config.get('SETTINGS', 'potential_trades_zone1_csv')), index=False)
         logger.info(f"Saved {len(potential_trades_zone1)} potential trades to Zone 1 CSV.")
-    else:
-        logger.info("No potential Zone 1 trades found.")
+    else: logger.info("No potential Zone 1 trades found.")
 
     if potential_trades_zone2:
         pd.DataFrame(potential_trades_zone2).to_csv(os.path.join(get_project_root(), config.get('SETTINGS', 'potential_trades_zone2_csv')), index=False)
         logger.info(f"Saved {len(potential_trades_zone2)} potential trades to Zone 2 CSV.")
-    else:
-        logger.info("No potential Zone 2 trades found.")
+    else: logger.info("No potential Zone 2 trades found.")
 
     logger.info("Daily market scan finished.")
 
