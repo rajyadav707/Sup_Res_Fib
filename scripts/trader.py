@@ -59,13 +59,27 @@ def execute_trades():
         logger.info("No new trades to execute.")
         return
 
-    potential_trades_csv = get_absolute_path(config.get('SETTINGS', 'potential_trades_csv'))
+    potential_trades_df_list = []
+    zone1_csv_path = get_absolute_path(config.get('SETTINGS', 'potential_trades_zone1_csv'))
+    zone2_csv_path = get_absolute_path(config.get('SETTINGS', 'potential_trades_zone2_csv'))
 
     try:
-        potential_trades_df = pd.read_csv(potential_trades_csv)
+        df1 = pd.read_csv(zone1_csv_path)
+        potential_trades_df_list.append(df1)
     except FileNotFoundError:
-        logger.error(f"{potential_trades_csv} not found. Cannot execute trades.")
+        logger.info(f"{zone1_csv_path} not found. Continuing without it.")
+
+    try:
+        df2 = pd.read_csv(zone2_csv_path)
+        potential_trades_df_list.append(df2)
+    except FileNotFoundError:
+        logger.info(f"{zone2_csv_path} not found. Continuing without it.")
+
+    if not potential_trades_df_list:
+        logger.error("No potential trades files found. Cannot execute trades.")
         return
+
+    potential_trades_df = pd.concat(potential_trades_df_list, ignore_index=True)
 
     fyers = FyersAPI()
     trade_mode = config.get('SETTINGS', 'trade_mode')
